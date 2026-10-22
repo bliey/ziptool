@@ -49,21 +49,53 @@ node dev/test-parser.mjs
 
 ## 部署到 GitHub Pages
 
-1. 新建仓库，把 `index.html`、`assets/`、`.nojekyll` 推到 `main` 分支根目录：
+本地仓库已经初始化好并完成了首次提交（分支 `main`），只剩两步。
 
-   ```bash
-   git init
-   git add index.html assets .nojekyll README.md
-   git commit -m "feat: ZIP 加密类型检测"
-   git branch -M main
-   git remote add origin https://github.com/<你的用户名>/<仓库名>.git
-   git push -u origin main
-   ```
+**1. 在 GitHub 上建一个空仓库**
 
-2. 仓库 **Settings → Pages** → Source 选 `Deploy from a branch`，Branch 选 `main` / `(root)`，保存。
-3. 等 1 分钟左右，访问 `https://<你的用户名>.github.io/<仓库名>/`。
+打开 <https://github.com/new>：
 
-所有资源都是相对路径（`assets/...`），放在仓库根目录或 `/docs` 子目录都能正常工作；如果放到子目录，记得把 Pages 的目录也改成对应目录。
+- Repository name 填 `ziptool`（或你喜欢的名字）
+- 选 **Public**（私有仓库开 Pages 需要付费计划）
+- **不要**勾 `Add a README file` / `Add .gitignore` / `Choose a license` —— 本地已经有这些文件，勾了会产生分叉，push 会被拒绝
+
+**2. 关联远程仓库并推送**
+
+```bash
+cd "C:/Users/bliey/Project/.workbuddy-ai/ziptool"
+git remote add origin https://github.com/<你的用户名>/ziptool.git
+git push -u origin main
+```
+
+Windows 上 Git Credential Manager 会接管认证，第一次可能弹浏览器登录一次，之后就不用再输密码。
+
+**3. 开启 Pages**
+
+仓库 **Settings → Pages** → Source 选 `Deploy from a branch` → Branch 选 `main`、目录选 `/(root)` → **Save**。
+
+等 30–60 秒，访问 `https://<你的用户名>.github.io/ziptool/`。
+
+> 如果仓库名直接叫 `<你的用户名>.github.io`，地址会变成 `https://<你的用户名>.github.io/`，不带子路径。
+
+### 后续更新
+
+```bash
+git add -A
+git commit -m "更新说明"
+git push
+```
+
+Pages 会自动重新构建，不用再点任何按钮。
+
+### 不想用命令行？
+
+GitHub 网页也能传：仓库页 **Add file → Upload files**，把 `index.html`、`assets/`、`README.md` 拖进去提交。
+
+但 `.nojekyll` 是空文件，拖拽上传经常被浏览器忽略，需要手动补一个：**Add file → Create new file**，文件名填 `.nojekyll`，内容留空，直接 Commit。少了它，以 `_` 开头的文件/目录会被 Jekyll 吞掉。
+
+### 路径说明
+
+所有资源都是相对路径（`assets/...`），放在仓库根目录或 `/docs` 子目录都能正常工作；如果放到子目录，记得把 Pages 的目录也改成对应目录。`dev/` 里是测试页，会被一起发布但不影响使用，介意的话可以加到 `.gitignore`。
 
 ## 文件头十六进制查看器
 
