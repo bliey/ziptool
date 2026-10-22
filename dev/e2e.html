@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>e2e</title>
+<style>body{margin:0;font:13px monospace}iframe{width:1px;height:1px;opacity:0.01;position:absolute}</style>
+</head>
+<body>
+<pre id="out">running</pre>
+<iframe id="frame" src="../index.html"></iframe>
+<script>
+function u16(n){return [n&255,(n>>8)&255];}
+function u32(n){return [n&255,(n>>8)&255,(n>>16)&255,(n>>24)&255];}
+
+function aesExtra(strength){
+  return [].concat(u16(0x9901),u16(7),u16(2),[0x41,0x45],[strength],u16(8));
+}
+
+function buildZip(entries){
+  const locals=[],centrals=[];let offset=0;
+  for(const e of entries){
+    const name = typeof e.name==='string' ? Array.from(new TextEncoder().encode(e.name)) : e.name;
+    const extra=e.extra||[];
+    const data=e.data||new Array(e.size||8).fill(0x41);
+    const flags=e.flags||0, method=e.method===undefined?8:e.method;
+    const local=[].concat([0x50,0x4b,3,4],u16(20),u16(flags),u16(method),u16(0),u16(0),
+      u32(0),u32(data.length),u32(data.length),u16(name.length),u16(extra.length),name,extra,data);
+    const central=[].concat([0x50,0x4b,1,2],u16(20),u16(20),u16(flags),u16(method),u16(0),u16(0),
+      u32(0),u32(data.length),u32(data.length),u16(name.length),u16(extra.length),u16(0),u16(0),u16(0),u32(0),
+      u32(offset),name,extra);
+    locals.push(local);centrals.push(central);offset+=local.length;
+  }
+  const cd=[].concat(...centrals);
+  return new Uint8Array([].concat(...locals,cd,[0x50,0x4b,5,6],u16(0),u16(0),u16(entries.length),u16(entries.length),
+    u32(cd.length),u32(offset),u16(0)));
+}
+
+const cases = {
+  'aes256.zip': [{name:'secret/合同.pdf',flags:1,method:99,extra:aesExtra(3)}],
+  'zipcrypto.zip': [{name:'old.txt',flags:1,method:8},{name:'old2.txt',flags:1,method:8}],
+  'plain.zip': [{name:'a.txt',method:8},{name:'b.txt',method:0}],
+  'mixed.zip': [{name:'zc.txt',flags:1,method:8},{name:'aes.txt',flags:1,method:99,extra:aesExtra(1)}],
+  'gbk.zip': [{name:[0xB2,0xE2,0xCA,0xD4,0x2E,0x74,0x78,0x74],method:8}],
+  'cp437.zip': [{name:[0x63,0x61,0x66,0x82,0x2E,0x74,0x78,0x74],method:8}],
+  'bandizip.zip': [{name:'b.txt',flags:0x0B,method:8}],
+  'haozip.zip': [{name:'h.txt',flags:0x0801,method:8}]
+};
+
+const frame=document.getElementById('frame');
+const results={};
+
+frame.addEventListener('load', async ()=>{
+  const win=frame.contentWindow, doc=frame.contentDocument;
+  const input=doc.getElementById('fileInput');
+  const errors=[];
+  win.addEventListener('error',e=>errors.push(String(e.message)));
+
+  for(const [name,entries] of Object.entries(cases)){
+    const bytes=buildZip(entries);
+    const file=new win.File([bytes],name,{type:'application/zip'});
+    const dt=new win.DataTransfer();
+    dt.items.add(file);
+    input.files=dt.files;
+    input.dispatchEvent(new win.Event('change'));
+    // 轮询等待渲染完成（隐藏 iframe 里定时器会被节流，不能只 sleep 固定时间）
+    const deadline=Date.now()+5000;
+    while(Date.now()<deadline){
+      const info=doc.getElementById('fileInfo').textContent||'';
+      const err=doc.getElementById('error');
+      if(info.indexOf(name)>=0 && (!err.hidden || info.indexOf('已检测')>=0)) break;
+      if(!err.hidden) break;
+      await new Promise(r=>setTimeout(r,50));
+    }
+    // 十六进制区与字段区是异步渲染的，再等它们落位
+    const d2=Date.now()+2000;
+    while(Date.now()<d2 && doc.querySelectorAll('#fields > div').length===0){
+      await new Promise(r=>setTimeout(r,50));
+    }
+    results[name]={
+      status:doc.getElementById('status').textContent,
+      statusClass:doc.getElementById('status').className,
+      resultHidden:doc.getElementById('result').hidden,
+      rows:doc.getElementById('entries').querySelectorAll('li').length,
+      firstTag:(doc.querySelector('#entries .tag')||{}).textContent,
+      firstName:(doc.querySelector('#entries .name')||{}).textContent,
+      warning:doc.getElementById('warnings').hidden ? null : doc.getElementById('warnings').textContent.trim(),
+      summary:[...doc.querySelectorAll('#summary div')].map(d=>d.textContent),
+      hint:doc.getElementById('hint').textContent.slice(0,40),
+      error:doc.getElementById('error').hidden ? null : doc.getElementById('error').textContent,
+      hexHidden:doc.getElementById('hexcard').hidden,
+      hexRows:doc.getElementById('hexBody').querySelectorAll('tr').length,
+      hexFirstRow:(doc.querySelector('#hexBody tr .hx')||{}).textContent,
+      sigHits:[...doc.querySelectorAll('#sigList li.hit .v')].map(n=>n.textContent),
+      sigVerdict:doc.getElementById('sigVerdict').textContent,
+      fieldRows:doc.querySelectorAll('#fields > div').length,
+      fieldText:doc.getElementById('fields').textContent.slice(0,120)
+    };
+  }
+  // 控件：跳转到中央目录 + 切换到 1 KB
+  const meta=doc.getElementById('hexMeta');
+  const before=meta.textContent;
+  [...doc.querySelectorAll('#hexJump button')].find(b=>b.dataset.jump==='cd').click();
+  let t=Date.now()+3000;
+  while(Date.now()<t && meta.textContent===before) await new Promise(r=>setTimeout(r,50));
+  results.__jumpCD=meta.textContent;
+
+  const beforeLen=meta.textContent;
+  [...doc.querySelectorAll('#hexLen button')].find(b=>b.dataset.len==='1024').click();
+  t=Date.now()+3000;
+  while(Date.now()<t && meta.textContent===beforeLen) await new Promise(r=>setTimeout(r,50));
+  results.__len1k={meta:meta.textContent, rows:doc.getElementById('hexBody').querySelectorAll('tr').length,
+                   on:[...doc.querySelectorAll('#hexLen button.on')].map(b=>b.textContent)};
+
+  // 非 ZIP 文件：应报错，但十六进制区仍要显示
+  {
+    const txt=new win.TextEncoder().encode('this is not a zip file, just plain text.\n'.repeat(3));
+    const f2=new win.File([txt],'notes.txt');
+    const dt2=new win.DataTransfer(); dt2.items.add(f2);
+    input.files=dt2.files;
+    input.dispatchEvent(new win.Event('change'));
+    let d=Date.now()+5000;
+    while(Date.now()<d && doc.getElementById('error').hidden) await new Promise(r=>setTimeout(r,50));
+    d=Date.now()+2500;
+    while(Date.now()<d && doc.querySelectorAll('#fields > div').length===0) await new Promise(r=>setTimeout(r,50));
+    results['notes.txt']={
+      error:doc.getElementById('error').textContent,
+      hexHidden:doc.getElementById('hexcard').hidden,
+      hexRows:doc.getElementById('hexBody').querySelectorAll('tr').length,
+      sigVerdict:doc.getElementById('sigVerdict').textContent,
+      fields:doc.getElementById('fields').textContent.slice(0,80)
+    };
+  }
+
+  results.__errors=errors;
+  document.getElementById('out').textContent=JSON.stringify(results,null,1);
+  document.title='done';
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZIP 加密类型检测 · 本地运行</title>
+<meta name="description" content="在浏览器本地判断 ZIP 压缩包用的是传统 ZipCrypto 还是 AES-128/192/256，只读文件末尾的中央目录，不上传、不整包加载，没有大小限制。">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <h1>ZIP 加密类型检测</h1>
+  <p class="sub">只读取文件末尾的中央目录，不上传、不加载整个文件，无大小限制。</p>
+
+  <div class="drop" id="drop" role="button" tabindex="0" aria-label="选择或拖入 ZIP 文件">
+    <p>把 ZIP 文件拖到这里，或 <strong>点击选择</strong></p>
+    <input type="file" id="fileInput" accept=".zip,application/zip,application/x-zip-compressed">
+  </div>
+  <p class="file-info" id="fileInfo" role="status" aria-live="polite"></p>
+
+  <div class="error" id="error" role="alert" hidden></div>
+
+  <div class="result" id="result" hidden>
+    <div class="status" id="status"></div>
+    <dl class="summary" id="summary"></dl>
+    <div class="warnings" id="warnings" hidden></div>
+    <ul class="entries" id="entries"></ul>
+    <p class="hint" id="hint"></p>
+    <div class="toolbar">
+      <button type="button" id="copyBtn">复制报告</button>
+    </div>
+  </div>
+
+  <section class="hexcard" id="hexcard" hidden>
+    <div class="hexbar">
+      <h2>文件头十六进制</h2>
+      <div class="hexbtns">
+        <div class="seg" id="hexLen" role="group" aria-label="显示字节数">
+          <button type="button" data-len="64">64 B</button>
+          <button type="button" data-len="256" class="on">256 B</button>
+          <button type="button" data-len="1024">1 KB</button>
+        </div>
+        <div class="seg" id="hexJump" role="group" aria-label="跳转">
+          <button type="button" data-jump="local">首个本地头</button>
+          <button type="button" data-jump="cd">中央目录</button>
+          <button type="button" data-jump="eocd">EOCD</button>
+        </div>
+      </div>
+    </div>
+
+    <p class="hex-meta" id="hexMeta"></p>
+
+    <div class="hexwrap">
+      <table class="hex">
+        <thead>
+          <tr><th class="off">偏移</th><th class="hx">00–07</th><th class="hx">08–0F</th><th class="asc">ASCII</th></tr>
+        </thead>
+        <tbody id="hexBody"></tbody>
+      </table>
+    </div>
+
+    <div class="sigblock">
+      <h3>常见 ZIP 文件头对比</h3>
+      <p class="sig-verdict" id="sigVerdict"></p>
+      <ul class="siglist" id="sigList"></ul>
+    </div>
+
+    <div class="fields">
+      <h3 id="fieldsTitle">首个本地文件头字段</h3>
+      <dl class="fieldlist" id="fields"></dl>
+    </div>
+  </section>
+
+  <footer>
+    所有解析都在你的浏览器里完成，文件不会被上传到任何服务器。
+  </footer>
+</div>
+
+<noscript>
+  <p style="text-align:center;color:#8b2a2a;">这个工具需要 JavaScript 才能读取 ZIP 结构，请在浏览器中启用后重试。</p>
+</noscript>
+
+<script src="assets/zip-inspector.js" defer></script>
+<script src="assets/app.js" defer></script>
+</body>
+</html>
