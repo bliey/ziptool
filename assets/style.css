@@ -538,3 +538,188 @@ footer a { color: var(--muted); }
   .hex tbody tr:hover td { background: #2b2621; }
   .b.sig-match, .a.sig-match { background: rgba(217, 154, 161, 0.2); }
 }
+
+/* ---------------------------------------------------------------- MD5 与二维码 */
+
+.md5card {
+  margin-top: 1.6rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1.2rem 1.5rem 1.4rem;
+}
+
+.md5card h2 {
+  font-size: 0.98rem;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+.md5card .md5sub {
+  margin: 0.35rem 0 1rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.md5card .drop { padding: 1.6rem 1rem; }
+.md5card .drop p { font-size: 0.9rem; }
+.md5card .file-info { margin-top: 0.9rem; }
+
+.md5card .error {
+  margin-top: 0.9rem;
+  padding: 0.7rem 0.9rem;
+  font-size: 0.86rem;
+  border-radius: 0.5rem;
+}
+
+/* 进度条 */
+
+.md5progress { margin-top: 1.1rem; }
+.md5progress[hidden] { display: none; }
+
+.md5bar {
+  height: 8px;
+  border-radius: 999px;
+  background: #ece3d3;
+  overflow: hidden;
+}
+
+.md5fill {
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.12s linear;
+}
+
+.md5prow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.md5prow .pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.md5prow button {
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: #faf6ee;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.md5prow button:hover { background: #f4ece0; border-color: var(--accent); }
+.md5prow button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* MD5 值 + 复制 */
+
+.md5out { margin-top: 1.2rem; }
+.md5out[hidden] { display: none; }
+
+.md5row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.md5val {
+  flex: 1 1 12rem;
+  min-width: 0;
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  background: #faf6ee;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  word-break: break-all;
+  user-select: all;
+}
+
+.md5copy {
+  font: inherit;
+  font-size: 0.84rem;
+  color: var(--accent);
+  background: #faf6ee;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.95rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.md5copy:hover { background: #f4ece0; border-color: var(--accent); }
+.md5copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 二维码：始终居中，与 MD5 值上下排列 */
+
+.qrbox {
+  margin-top: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding-bottom: 0.2rem;
+}
+
+.qrframe {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  line-height: 0;
+}
+
+.qrframe canvas {
+  display: block;
+  width: 200px;
+  height: 200px;
+}
+
+.qrhint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.md5privacy {
+  margin: 1.2rem 0 0;
+  padding-top: 0.85rem;
+  border-top: 1px dashed var(--border);
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .md5card { padding: 1.1rem 1rem 1.2rem; }
+  .md5val { font-size: 0.95rem; letter-spacing: 0.02em; }
+  .md5copy { flex: 1 1 100%; }
+}
+
+@media (prefers-color-scheme: dark) {
+  .md5bar { background: #2b2621; }
+  .md5val,
+  .md5copy,
+  .md5prow button { background: #2b2621; }
+  .md5copy:hover,
+  .md5prow button:hover { background: #332d27; }
+}

@@ -1,24 +1,35 @@
-# ZIP 加密类型检测
+# ZIP 加密类型检测 + MD5 二维码
 
 一个纯前端的 ZIP 压缩包加密类型检测工具。拖入 `.zip`，直接在浏览器里判断它是**传统 ZipCrypto**、**WinZip AES-128/192/256**，还是**未加密**，并据此判断能否尝试已知明文攻击。
+
+页面下方还带一个 **MD5 计算与二维码** 区块：拖入任意文件，分块算出 MD5，并把纯 MD5 字符串渲染成二维码，方便手机扫码查询。
 
 - 全部在本地完成，文件不上传、不联网
 - 只读取文件末尾的 EOCD 与中央目录，不整包载入内存，**没有文件大小限制**
 - 中央目录分块顺序读取，条目数几十万也不爆内存
+- MD5 按 4 MB 分块顺序读取，几 GB 的文件内存占用也只有几十 MB
 - 支持 ZIP64、自解压包前置数据、GBK 文件名
-- 零依赖、零构建，纯静态文件
+- 依赖（spark-md5、qrcode）**全部内联进 `index.html`**，不走任何 CDN，断网可用
 
 ## 目录结构
 
 ```
 .
-├── index.html              # 页面骨架
+├── index.html              # 页面骨架 + 内联的 spark-md5 / qrcode
 ├── assets/
 │   ├── style.css           # 样式
-│   ├── zip-inspector.js    # 解析核心（可独立复用）
-│   └── app.js              # 界面层
-├── dev/
-│   └── test-parser.mjs     # 解析核心自测（不参与部署）
+│   ├── zip-inspector.js    # ZIP 解析核心（可独立复用）
+│   ├── app.js              # ZIP 界面层
+│   └── md5.js              # MD5 与二维码逻辑（与 ZIP 区块完全独立）
+├── dev/                    # 不参与部署
+│   ├── test-parser.mjs     # 解析核心自测
+│   ├── e2e.html            # ZIP 区块端到端测试
+│   ├── md5-e2e.html        # MD5 区块端到端测试
+│   ├── md5-mem.html        # 大文件内存占用测试
+│   ├── cdp-run.mjs         # 用 CDP 驱动无头 Chrome 跑测试
+│   ├── cdp-copy.mjs        # 剪贴板行为验证
+│   ├── cdp-file.mjs        # file:// 下的自包含验证
+│   └── cdp-shot.mjs        # 截图
 ├── .nojekyll               # 让 GitHub Pages 跳过 Jekyll
 └── README.md
 ```
@@ -129,6 +140,34 @@ GitHub 网页也能传：仓库页 **Add file → Upload files**，把 `index.ht
 - 同一款软件不同版本、不同加密选项会写出不同头部，所以表里同一家会出现多条
 - `0x0009` 这一条 Bandizip 与 WinRAR 完全相同，仅凭文件头无法区分
 - 改过头部、二次打包、或用了其他压缩库的包，可能一条都不命中——此时界面会直接说"与任何指纹都不一致"
+
+## MD5 计算与二维码
+
+页面最下方的独立区块，和上面的 ZIP 检测互不干扰，各用各的文件选择框。
+
+- 拖入任意文件，**按 4 MB 分块顺序读取**（`file.slice().arrayBuffer()` + `SparkMD5.ArrayBuffer` 增量 API），不会把整个文件读进内存
+- 每读完一块刷新一次进度条，计算中可随时点「取消」
+- 算完显示 32 位小写 MD5，旁边「复制」走 `navigator.clipboard.writeText`
+- MD5 下方是二维码，内容**就是 32 位 MD5 字符串本身**，不加前缀、不加 URL，方便「解压缩全能王」这类工具直接扫
+- 计算期间文件选择区被禁用，此时再拖入文件会提示「正在计算中，请等待或取消」
+
+实测（无头 Chrome，4 MB 分块）：
+
+| 文件大小 | 耗时 | JS 堆峰值增量 | MD5 |
+| --- | --- | --- | --- |
+| 512 MB | 4.5 s | 48.8 MB | 校验一致 |
+| 1 GB | 8.7 s | 54.6 MB | 校验一致 |
+
+堆占用基本不随文件变大而增长，因为每次只持有一个分块。
+
+### 依赖为什么内联
+
+`spark-md5@3.0.2` 和 `qrcode@1.5.3` 的 minified 源码直接写在 `index.html` 里，**不引任何 CDN**，断网、`file://` 双击都能用。
+
+- `spark-md5.min.js` 取自 npm 包 `spark-md5@3.0.2`，原样内联（sha256 前缀 `4cc433fc805298ff`）
+- `qrcode.min.js` 由 `qrcode@1.5.3` 官方 `rollup.config.js` 原样构建（`lib/browser.js` → IIFE，`name: 'QRCode'`，babel + terser），库代码未做任何改动。npm 包里没有 `build/` 目录，所以按官方配置自己跑了一遍 rollup
+- 两个脚本都排在业务脚本之前，全局暴露 `SparkMD5` / `QRCode`
+- 页面加载时只请求自身的 HTML、CSS 和 3 个 `assets/*.js`，没有任何第三方脚本请求
 
 ## 判定逻辑
 

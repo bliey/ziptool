@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>md5 mem</title>
+<style>iframe { width: 100%; height: 800px; border: 1px solid #ccc; }</style>
+</head>
+<body>
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running</pre>
+<script>
+(async function () {
+  const out = document.getElementById('out');
+  const errors = [];
+  const iframe = document.getElementById('f');
+  await new Promise(r => iframe.addEventListener('load', r, { once: true }));
+  const win = iframe.contentWindow;
+  const doc = win.document;
+  win.addEventListener('error', e => errors.push('frame:' + e.message));
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const $ = id => doc.getElementById(id);
+
+  const t = Date.now();
+  while (Date.now() - t < 15000 && !($('md5Input') && win.SparkMD5)) await sleep(40);
+
+  // 512 MB = 128 × 4 MB，全部来自同一个 4 MB 源缓冲
+  const N = 4 * 1024 * 1024;
+  const part = new Uint8Array(N);
+  for (let i = 0; i < N; i++) part[i] = (i * 37 + ((i >> 8) * 11)) & 0xff;
+  const NB = Number(new URLSearchParams(location.search).get('n') || 128);
+  const EXPECT = { 128: '68ad13b12fa8b92ad7fd0428f80b1a4a', 256: 'd2c758590bec64f81a27bf7ef0e59f66' };
+  const parts = [];
+  for (let i = 0; i < NB; i++) parts.push(part);
+  const big = new win.File(parts, 'big' + NB + '.bin');
+
+  const mem = [];
+  const pct = [];
+  let phase = 'idle';
+
+  // 先让 Blob 构造产生的垃圾沉降，再取基线，避免把「造测试文件」的开销算到计算头上
+  await sleep(1200);
+  const heapBaseline = win.performance.memory ? win.performance.memory.usedJSHeapSize : 0;
+
+  const timer = setInterval(() => {
+    if (win.performance.memory) mem.push([phase, win.performance.memory.usedJSHeapSize]);
+    pct.push($('md5Pct').textContent);
+  }, 100);
+
+  const dt = new win.DataTransfer();
+  dt.items.add(big);
+  const input = $('md5Input');
+  input.files = dt.files;
+  const t0 = Date.now();
+  phase = 'compute';
+  input.dispatchEvent(new win.Event('change'));
+
+  while (Date.now() - t0 < 300000) {
+    if ($('md5Val').textContent.length === 32 || !$('md5Error').hidden) break;
+    await sleep(100);
+  }
+  phase = 'after';
+  await sleep(300);
+  clearInterval(timer);
+
+  const during = mem.filter(m => m[0] === 'compute').map(m => m[1]);
+  const md5 = $('md5Val').textContent;
+  out.textContent = JSON.stringify({
+    sizeMB: +(big.size / 1048576).toFixed(0),
+    md5,
+    ok: md5 === EXPECT[NB],
+    seconds: +((Date.now() - t0) / 1000).toFixed(1),
+    heapBaselineMB: +(heapBaseline / 1048576).toFixed(1),
+    heapDuringMaxMB: during.length ? +(Math.max.apply(null, during) / 1048576).toFixed(1) : null,
+    heapDeltaMaxMB: during.length ? +((Math.max.apply(null, during) - heapBaseline) / 1048576).toFixed(1) : null,
+    samples: during.length,
+    distinctPct: [...new Set(pct)].slice(0, 12),
+    qrDark: (function () {
+      const c = $('md5Qr');
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 128 && d[i] < 128) n++;
+      return n;
+    })(),
+    error: $('md5Error').hidden ? null : $('md5Error').textContent,
+    __errors: errors
+  }, null, 1);
+  document.title = 'done';
+})().catch(e => {
+  document.getElementById('out').textContent = 'FATAL: ' + (e && e.stack || e);
+  document.title = 'fatal';
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>md5 e2e</title>
+<style>
+  iframe { width: 100%; height: 900px; border: 1px solid #ccc; }
+  #out { font: 12px ui-monospace, Consolas, monospace; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running</pre>
+<script>
+(async function () {
+  const out = document.getElementById('out');
+  const errors = [];
+  window.addEventListener('error', e => errors.push('top:' + e.message));
+
+  const iframe = document.getElementById('f');
+  // 注意：新建 iframe 的 about:blank 文档 readyState 也可能是 complete，
+  // 所以只认 load 事件，之后再用元素存在性确认真的加载完了。
+  await new Promise(r => iframe.addEventListener('load', r, { once: true }));
+
+  const win = iframe.contentWindow;
+  const doc = win.document;
+  win.addEventListener('error', e => errors.push('frame:' + e.message));
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  async function waitFor(fn, ms) {
+    const end = Date.now() + (ms || 60000);
+    while (Date.now() < end) { if (fn()) return true; await sleep(40); }
+    return false;
+  }
+
+  const ready = await waitFor(() => doc.getElementById('md5Input') && win.QRCode && win.SparkMD5, 15000);
+  if (!ready) {
+    out.textContent = 'NOT READY: ' + JSON.stringify({
+      input: !!doc.getElementById('md5Input'),
+      QRCode: typeof win.QRCode,
+      SparkMD5: typeof win.SparkMD5,
+      errors: errors
+    });
+    document.title = 'fatal';
+    return;
+  }
+
+  // 记录二维码实际写入的文本
+  let qrText = null, qrCalls = 0;
+  const origToCanvas = win.QRCode.toCanvas;
+  win.QRCode.toCanvas = function (canvas, text) {
+    qrText = text; qrCalls++;
+    return origToCanvas.apply(this, arguments);
+  };
+
+  function gen(size) {
+    const b = new Uint8Array(size);
+    for (let i = 0; i < size; i++) b[i] = (i * 37 + ((i >> 8) * 11)) & 0xff;
+    return b;
+  }
+  function makeFile(size, name) {
+    return new win.File([gen(size)], name);
+  }
+  function pick(file) {
+    const dt = new win.DataTransfer();
+    dt.items.add(file);
+    const input = doc.getElementById('md5Input');
+    input.files = dt.files;
+    input.dispatchEvent(new win.Event('change'));
+  }
+  const $ = id => doc.getElementById(id);
+  const pctEl = () => $('md5Pct');
+
+  function watchPct() {
+    const vals = [];
+    const mo = new win.MutationObserver(() => vals.push(pctEl().textContent));
+    mo.observe(pctEl(), { childList: true, characterData: true, subtree: true });
+    return { vals, stop: () => mo.disconnect() };
+  }
+  function darkPixels() {
+    const c = $('md5Qr');
+    const ctx = c.getContext('2d');
+    const d = ctx.getImageData(0, 0, c.width, c.height).data;
+    let dark = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 128 && d[i] < 128) dark++;
+    return dark;
+  }
+
+  const results = {};
+  const EXP = {
+    ten: '3812178d8c806909d8496f7861ef1aea',
+    tiny: 'd62478a52246cec25989b858b9b222ee',
+    odd: '7334cfd0a95dc0203654061a2aaaaf63',
+    empty: 'd41d8cd98f00b204e9800998ecf8427e'
+  };
+
+  // ---------------------------------------------------------------- 1. 10 MB
+  const w1 = watchPct();
+  pick(makeFile(10485760, 'ten.bin'));
+  await waitFor(() => !$('md5Out').hidden || !$('md5Error').hidden);
+  w1.stop();
+  await sleep(400);
+  results['10MB'] = {
+    md5: $('md5Val').textContent,
+    md5ok: $('md5Val').textContent === EXP.ten,
+    pctSamples: w1.vals.slice(),
+    distinctPct: [...new Set(w1.vals)],
+    qrText: qrText,
+    qrIsPlainMd5: qrText === EXP.ten,
+    qrCalls: qrCalls,
+    darkPixels: darkPixels(),
+    canvasW: $('md5Qr').width,
+    progressHidden: $('md5Progress').hidden,
+    fileInfo: $('md5FileInfo').textContent,
+    busy: $('md5Drop').classList.contains('busy'),
+    inputDisabled: $('md5Input').disabled
+  };
+
+  // 复制按钮
+  $('md5Copy').click();
+  await sleep(120);
+  results.copyText = $('md5Copy').textContent;
+
+  // ------------------------------------------------------------ 2. 空文件
+  pick(makeFile(0, 'empty.txt'));
+  await waitFor(() => !$('md5Error').hidden);
+  results.empty = {
+    error: $('md5Error').textContent,
+    outHidden: $('md5Out').hidden,
+    progressHidden: $('md5Progress').hidden
+  };
+
+  // -------------------------------------------------- 3. 4 MB + 1（跨块边界）
+  pick(makeFile(4 * 1024 * 1024 + 1, 'odd.bin'));
+  await waitFor(() => $('md5Val').textContent === EXP.odd || !$('md5Error').hidden);
+  results.oddChunk = {
+    md5: $('md5Val').textContent,
+    ok: $('md5Val').textContent === EXP.odd,
+    error: $('md5Error').hidden ? null : $('md5Error').textContent
+  };
+
+  // ------------------------------------------------------ 4. 同一文件重复选
+  const tiny = makeFile(3, 'tiny.bin');
+  pick(tiny);
+  await waitFor(() => $('md5Val').textContent === EXP.tiny);
+  const first = $('md5Val').textContent;
+  const callsBefore = qrCalls;
+  pick(tiny);
+  await waitFor(() => qrCalls > callsBefore, 20000);
+  results.repeat = {
+    first: first,
+    second: $('md5Val').textContent,
+    recomputed: qrCalls > callsBefore,
+    ok: first === EXP.tiny && $('md5Val').textContent === EXP.tiny
+  };
+
+  // ------------------------------------------------------------ 5. 取消
+  pick(makeFile(80 * 1024 * 1024, 'big.bin'));
+  await waitFor(() => !$('md5Progress').hidden, 15000);
+  await sleep(80);
+  const pctAtCancel = pctEl().textContent;
+
+  // 计算中再拖入文件 → 应被拒绝
+  pick(makeFile(2048, 'intruder.bin'));
+  await sleep(120);
+  const busyMsg = $('md5Error').hidden ? null : $('md5Error').textContent;
+  const stillBig = $('md5FileInfo').textContent;
+
+  $('md5Cancel').click();
+  await sleep(400);
+  results.cancel = {
+    pctAtCancel,
+    busyMsg,
+    stillBig,
+    progressHidden: $('md5Progress').hidden,
+    outHidden: $('md5Out').hidden,
+    busy: $('md5Drop').classList.contains('busy'),
+    inputDisabled: $('md5Input').disabled,
+    fileInfo: $('md5FileInfo').textContent
+  };
+
+  // 取消后还能继续用
+  pick(makeFile(3, 'after-cancel.bin'));
+  await waitFor(() => $('md5Val').textContent === EXP.tiny, 20000);
+  results.afterCancel = {
+    md5: $('md5Val').textContent,
+    ok: $('md5Val').textContent === EXP.tiny,
+    qrCalls,
+    error: $('md5Error').hidden ? null : $('md5Error').textContent,
+    fileInfo: $('md5FileInfo').textContent,
+    progressHidden: $('md5Progress').hidden,
+    busy: $('md5Drop').classList.contains('busy')
+  };
+
+  // ------------------------------------------- 6. 256 MB：大文件与内存占用
+  {
+    const part = gen(4 * 1024 * 1024);
+    const parts = [];
+    for (let i = 0; i < 64; i++) parts.push(part);
+    const big = new win.File(parts, 'big256.bin');
+    const mem = [];
+    const timer = setInterval(() => {
+      if (win.performance.memory) mem.push(win.performance.memory.usedJSHeapSize);
+    }, 80);
+    const t0 = Date.now();
+    pick(big);
+    await waitFor(() => $('md5Val').textContent.length === 32 || !$('md5Error').hidden, 180000);
+    clearInterval(timer);
+    results.big256 = {
+      size: big.size,
+      md5: $('md5Val').textContent,
+      ok: $('md5Val').textContent === '851f49831e6f5998e62201d5c290b32e',
+      seconds: ((Date.now() - t0) / 1000).toFixed(1),
+      heapMaxMB: mem.length ? +(Math.max.apply(null, mem) / 1048576).toFixed(1) : null,
+      samples: mem.length,
+      qrOk: qrText === '851f49831e6f5998e62201d5c290b32e'
+    };
+  }
+
+  // ------------------------------------------------- 7. 资源与依赖自包含
+  results.resources = win.performance.getEntriesByType('resource').map(r => r.name);
+  results.globals = {
+    SparkMD5: typeof win.SparkMD5,
+    QRCode: typeof win.QRCode,
+    toCanvas: typeof (win.QRCode && win.QRCode.toCanvas),
+    ZipInspector: typeof win.ZipInspector
+  };
+  results.separateInputs = {
+    zip: !!$('fileInput'), md5: !!$('md5Input'), same: $('fileInput') === $('md5Input')
+  };
+  results.privacy = $('md5card').querySelector('.md5privacy').textContent;
+
+  results.__errors = errors;
+  out.textContent = JSON.stringify(results, null, 1);
+  document.title = 'done';
+})().catch(e => {
+  document.getElementById('out').textContent = 'FATAL: ' + (e && e.stack || e);
+  document.title = 'fatal';
+});
+</script>
+</body>
+</html>
